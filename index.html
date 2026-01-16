@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <title>Double Submit Guard – Booking Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="src/style.css" />
+</head>
+<body>
+
+  <main class="app">
+
+    <h1>Booking Confirm – Double Submit Guard</h1>
+
+    <!-- STEP 1: SERVICE -->
+    <section id="step-service" class="step">
+      <h2>1. Szolgáltatás kiválasztása</h2>
+
+      <div class="options">
+        <button data-service-id="cardiology">Kardiológia</button>
+        <button data-service-id="lab">Labor</button>
+        <button data-service-id="ultrasound">Ultrahang</button>
+      </div>
+
+      <div class="nav">
+        <button id="to-slot" disabled>Tovább</button>
+      </div>
+    </section>
+
+    <!-- STEP 2: SLOT -->
+    <section id="step-slot" class="step hidden">
+      <h2>2. Időpont kiválasztása</h2>
+
+      <div class="options">
+        <button data-slot-id="slot-1">Jan 20 · 10:00</button>
+        <button data-slot-id="slot-2">Jan 20 · 10:30</button>
+        <button data-slot-id="slot-3">Jan 20 · 11:00</button>
+        <button data-slot-id="slot-4">Jan 20 · 11:30</button>
+      </div>
+
+      <div class="nav">
+        <button id="back-to-service">Vissza</button>
+        <button id="to-confirm" disabled>Tovább</button>
+      </div>
+    </section>
+
+    <!-- STEP 3: CONFIRM -->
+    <section id="step-confirm" class="step hidden">
+      <h2>3. Foglalás megerősítése</h2>
+
+      <div class="summary">
+        <p><strong>Szolgáltatás:</strong> <span id="summary-service">–</span></p>
+        <p><strong>Időpont:</strong> <span id="summary-slot">–</span></p>
+      </div>
+
+      <div class="confirm-box">
+        <button id="confirm-btn">Foglalás megerősítése</button>
+        
+
+        <div id="confirm-status" class="status">
+          <!-- idle | submitting | success | error -->
+          <span id="status-text">Készen áll</span>
+        </div>
+
+        <div id="confirm-result" class="hidden">
+          <p><strong>Foglalási azonosító:</strong> <span id="booking-id">–</span></p>
+          <p><small>Idempotency key: <span id="idempotency-key">–</span></small></p>
+          <button id="new-booking-btn">Új foglalás</button>
+        </div>
+
+        <div id="confirm-error" class="hidden">
+          <p class="error-text">Hiba történt.</p>
+          <button id="retry-btn">Újrapróbálás</button>
+        </div>
+      </div>
+
+      <div class="nav">
+        <button id="back-to-slot">Vissza</button>
+      </div>
+    </section>
+
+    <!-- DEV / DEBUG -->
+    <section class="debug">
+      <h3>Debug log</h3>
+      <pre id="log"></pre>
+
+      <button id="double-click-test">
+        ⚠️ Double click teszt (2x confirm)
+      </button>
+    </section>
+
+  </main>
+
+  <script src="src/app.js"></script>
+</body>
+</html>
