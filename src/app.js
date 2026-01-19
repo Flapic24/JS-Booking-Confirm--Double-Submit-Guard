@@ -20,8 +20,8 @@ const state = {
   api: {
     minDelayMs: 400,
     maxDelayMs: 2000,
-    errorRate: 0.0,
-    postSuccessErrorRate: 0.9,
+    errorRate: 0.1,
+    postSuccessErrorRate: 0.4,
 },
 };
 
