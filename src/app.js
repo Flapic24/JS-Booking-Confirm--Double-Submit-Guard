@@ -1,4 +1,5 @@
 // src/app.js
+const DEBUG = true;
 
 // ---------- STATE ----------
 const state = {
@@ -7,15 +8,20 @@ const state = {
   selectedSlotId: null,
   selectedBookingId: null,
 
+  idempotencyKey: null,
+
   lastConfirmPayload: null,
   lastConfirmOptions: null,
+
+  lastErrorMessage: null,
 
   confirmStatus: "idle", // "idle" | "submitting" | "success" | "error"
 
   api: {
     minDelayMs: 400,
     maxDelayMs: 2000,
-    errorRate: 0.9,
+    errorRate: 0.0,
+    postSuccessErrorRate: 0.9,
 },
 };
 
@@ -47,6 +53,7 @@ const el = {
   idempotencyKey: document.getElementById("idempotency-key"),
 
   confirmError: document.getElementById("confirm-error"),
+  errorMessage: document.getElementById("error-message"),
   retryBtn: document.getElementById("retry-btn"),
 
   newBookingBtn: document.getElementById("new-booking-btn"),
@@ -56,8 +63,11 @@ const el = {
   doubleClickTest: document.getElementById("double-click-test"),
 };
 
+const fakeConfirmedByKey = new Map(); 
+
 // ---------- HELPERS ----------
 function log(message) {
+  if(!DEBUG) return;
   const time = new Date().toLocaleTimeString("hu-HU", {
     hour: "2-digit",
     minute: "2-digit",
@@ -122,22 +132,23 @@ function render() {
 
   // confirm UI (most még csak minimál státusz)
   el.confirmBtn.disabled = (state.confirmStatus === "submitting");
+  el.idempotencyKey.textContent = state.idempotencyKey ?? "--";
   el.statusText.textContent =
     state.confirmStatus === "idle" ? "Készen áll"
     : state.confirmStatus === "submitting" ? "Küldés…"
     : state.confirmStatus === "success" ? "Sikeres!"
     : "Hiba történt.";
   
-    // Retry UI state (mindig állítsd be, ne csak néha)
-    const isError = state.confirmStatus === "error";
-    const isSubmitting = state.confirmStatus === "submitting";
-    const hasRetryData = !!state.lastConfirmPayload && !!state.lastConfirmOptions;
+  // Retry UI state (mindig állítsd be, ne csak néha)
+  const isError = state.confirmStatus === "error";
+  const isSubmitting = state.confirmStatus === "submitting";
+  const hasRetryData = !!state.lastConfirmPayload && !!state.lastConfirmOptions;
 
-    // A retry gomb csak error esetén értelmes, és csak akkor, ha van mit újraküldeni
-    el.retryBtn.disabled = !isError || isSubmitting || !hasRetryData;
+  // A retry gomb csak error esetén értelmes, és csak akkor, ha van mit újraküldeni
+  el.retryBtn.disabled = !isError || isSubmitting || !hasRetryData;
 
-    // (opcionális) felirat: ha már nyomtál retry-t és újra küld, legyen egyértelmű
-    el.retryBtn.textContent = isSubmitting ? "Újrapróbálás…" : "Újrapróbálás";
+  // (opcionális) felirat: ha már nyomtál retry-t és újra küld, legyen egyértelmű
+  el.retryBtn.textContent = isSubmitting ? "Újrapróbálás…" : "Újrapróbálás";
 
   // ezekkel MOST még nem foglalkozunk, csak rejtsük el alapból
   // confirm result / error visibility
@@ -151,14 +162,21 @@ function render() {
     state.confirmStatus !== "error"
   );
 
+  el.errorMessage.textContent =
+  state.confirmStatus === "error"
+    ? (state.lastErrorMessage ?? "Hiba történt.")
+    : "";
+
   el.bookingId.textContent =
   state.confirmStatus === "success" ? state.selectedBookingId : "–";
 }
 
+
+
+
 // ---------- EVENTS ----------
 function onSelectService(serviceId) {
   state.selectedServiceId = serviceId;
-  log(`SERVICE selected: ${serviceId}`);
   render();
 }
 
@@ -168,7 +186,6 @@ function onSelectSlot(slotId) {
   render();
 }
 
-
 function onConfirmClick() {
     if (state.confirmStatus === "submitting") {
         log("CONFIRM ignored (already submitting)");
@@ -176,24 +193,46 @@ function onConfirmClick() {
     }
     log("CONFIRM clicked");
 
+    if(state.idempotencyKey === null) {
+      state.idempotencyKey = crypto.randomUUID();
+    }
+
     const payload = {
       serviceId: state.selectedServiceId,
       slotId: state.selectedSlotId,
+      idempotencyKey: state.idempotencyKey,
     }
+
     state.lastConfirmPayload = payload;
-    log("CONFIRM PAYLOAD: " + JSON.stringify(payload));
 
     const options = {
       minDelayMs: state.api.minDelayMs,
       maxDelayMs: state.api.maxDelayMs,
       errorRate: state.api.errorRate,
+      postSuccessErrorRate: state.api.postSuccessErrorRate,
     }
     state.lastConfirmOptions = options;
     submitConfirm(payload, options);
 }
 
+
+function onDoubleClickTest() {
+  onConfirmClick();
+  setTimeout(onConfirmClick, 10);
+}
+
+
+function onRetryClick() {
+  if (!state.lastConfirmPayload) return;
+  if (state.confirmStatus === "submitting") return;
+  submitConfirm(state.lastConfirmPayload, state.lastConfirmOptions);
+}
+
+
+
 function submitConfirm(payload, options) {
   state.confirmStatus = "submitting";
+  state.lastErrorMessage = null;
   render();
   fakeConfirmBooking(payload, options)
   .then((result) => {
@@ -204,23 +243,19 @@ function submitConfirm(payload, options) {
   })
   .catch((error) => {
     state.confirmStatus = "error";
+
+    if (error.message.includes("AFTER success")) {
+      state.lastErrorMessage =
+        "A foglalás valószínűleg sikeres volt, csak a válasz nem érkezett meg. " +
+        "Nyomj az Újrapróbálás gombra — ez biztonságos.";
+    } else {
+      state.lastErrorMessage =
+        "A foglalás nem sikerült. Kérjük, próbáld újra.";
+    }
+
     log("API error: " + error.message);
     render();
   });
-}
-
-// “Double click test” gomb: direkt kétszer hívja.
-function onDoubleClickTest() {
-  log("DOUBLE CLICK TEST fired (2x confirm)");
-  onConfirmClick();
-  setTimeout(onConfirmClick, 10);
-}
-
-// Retry gomb most még ne csináljon semmit érdemit
-function onRetryClick() {
-  if (!state.lastConfirmPayload) {log("Retry ERROR: Nincs mentett payload!"); return; }
-  if (state.confirmStatus === "submitting") return;
-  submitConfirm(state.lastConfirmPayload, state.lastConfirmOptions);
 }
 
 function resetAll() {
@@ -231,32 +266,54 @@ function resetAll() {
   state.confirmStatus = "idle";
   state.lastConfirmPayload = null;
   state.lastConfirmOptions = null;
+  state.idempotencyKey = null;
+  state.lastErrorMessage = null;
   log("RESET");
   render();
 }
 
 function fakeConfirmBooking(payload, options) {
+  const existing = fakeConfirmedByKey.get(payload.idempotencyKey);
+  if (existing) {
+    const { minDelayMs, maxDelayMs } = options;
+    const delay =
+      Math.floor(Math.random() * (maxDelayMs - minDelayMs + 1)) + minDelayMs;
+    log("DEDUP HIT");
+    return new Promise((resolve) => {
+      setTimeout(() => { resolve(existing); }, delay);
+  });
+  }
+
   return new Promise((resolve, reject) => {
-    const { minDelayMs, maxDelayMs, errorRate } = options;
+    const { minDelayMs, maxDelayMs, errorRate, postSuccessErrorRate } = options;
 
     const delay = Math.floor(Math.random() * (maxDelayMs - minDelayMs + 1)) + minDelayMs;
 
     setTimeout(() => {
       const shouldFail = Math.random() < errorRate;
       if (shouldFail) {
-        reject(new Error("Booking failed!"));
-      } else {
-        resolve({
+        reject(new Error("Server error (not processed)"));
+        return;
+      }
+
+      const result = {
           bookingId: "BKG-" + Math.floor(Math.random() * 10000),
           serviceId: payload.serviceId,
           slotId: payload.slotId,
-        })
-      }
+          idempotencyKey: payload.idempotencyKey,
+        };
+        fakeConfirmedByKey.set(payload.idempotencyKey, result);
+        if(Math.random() < postSuccessErrorRate) {
+          reject(new Error("Network error AFTER success (processed & stored)"))
+          return;
+        }
+        resolve(result);
+
     }, delay)
   })
 }
 
-// ---------- WIRE UP ----------
+// ---------- INIT ----------
 function init() {
   // step 1 buttons
   for (const btn of el.serviceButtons) {
