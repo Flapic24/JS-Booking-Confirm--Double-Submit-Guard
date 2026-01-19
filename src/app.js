@@ -6,14 +6,16 @@ const state = {
   selectedServiceId: null,
   selectedSlotId: null,
   selectedBookingId: null,
+
   lastConfirmPayload: null,
+  lastConfirmOptions: null,
 
   confirmStatus: "idle", // "idle" | "submitting" | "success" | "error"
 
   api: {
     minDelayMs: 400,
     maxDelayMs: 2000,
-    errorRate: 0.3,
+    errorRate: 0.9,
 },
 };
 
@@ -125,6 +127,9 @@ function render() {
     : state.confirmStatus === "submitting" ? "Küldés…"
     : state.confirmStatus === "success" ? "Sikeres!"
     : "Hiba történt.";
+  
+  if (state.confirmStatus === "submitting") el.retryBtn.disabled = true;
+  if (state.confirmStatus === "error") el.retryBtn.disabled = false;
 
   // ezekkel MOST még nem foglalkozunk, csak rejtsük el alapból
   // confirm result / error visibility
@@ -174,10 +179,11 @@ function onConfirmClick() {
       maxDelayMs: state.api.maxDelayMs,
       errorRate: state.api.errorRate,
     }
-    submitConfirm(payload);
+    state.lastConfirmOptions = options;
+    submitConfirm(payload, options);
 }
 
-function submitConfirm(payload) {
+function submitConfirm(payload, options) {
   state.confirmStatus = "submitting";
   render();
   fakeConfirmBooking(payload, options)
@@ -203,7 +209,9 @@ function onDoubleClickTest() {
 
 // Retry gomb most még ne csináljon semmit érdemit
 function onRetryClick() {
-  log("RETRY clicked (not implemented yet)");
+  if (!state.lastConfirmPayload) {log("Retry ERROR: Nincs mentett payload!"); return; }
+  if (state.confirmStatus === "submitting") return;
+  submitConfirm(state.lastConfirmPayload, state.lastConfirmOptions);
 }
 
 function resetAll() {
