@@ -5,9 +5,16 @@ const state = {
   step: "service", // "service" | "slot" | "confirm"
   selectedServiceId: null,
   selectedSlotId: null,
+  selectedBookingId: null,
+  lastConfirmPayload: null,
 
-  // később ide jön majd a double submit / idempotency rész
   confirmStatus: "idle", // "idle" | "submitting" | "success" | "error"
+
+  api: {
+    minDelayMs: 400,
+    maxDelayMs: 2000,
+    errorRate: 0.3,
+},
 };
 
 // ---------- DOM ----------
@@ -120,16 +127,18 @@ function render() {
     : "Hiba történt.";
 
   // ezekkel MOST még nem foglalkozunk, csak rejtsük el alapból
-// confirm result / error visibility
-el.confirmResult.classList.toggle(
-  "hidden",
-  state.confirmStatus !== "success"
-);
+  // confirm result / error visibility
+  el.confirmResult.classList.toggle(
+    "hidden",
+    state.confirmStatus !== "success"
+  );
 
-el.confirmError.classList.toggle(
-  "hidden",
-  state.confirmStatus !== "error"
-);
+  el.confirmError.classList.toggle(
+    "hidden",
+    state.confirmStatus !== "error"
+  );
+
+  if (state.confirmStatus === "success") el.bookingId.textContent = state.selectedBookingId;
 }
 
 // ---------- EVENTS ----------
@@ -145,8 +154,7 @@ function onSelectSlot(slotId) {
   render();
 }
 
-// Itt MOST még nincs double submit védelem.
-// Csak “demo” submit: átállítjuk submittingre, majd 700ms után success.
+
 function onConfirmClick() {
     if (state.confirmStatus === "submitting") {
         log("CONFIRM ignored (already submitting)");
@@ -154,18 +162,39 @@ function onConfirmClick() {
     }
     log("CONFIRM clicked");
 
-    state.confirmStatus = "submitting";
-    render();
+    const payload = {
+      serviceId: state.selectedServiceId,
+      slotId: state.selectedSlotId,
+    }
+    state.lastConfirmPayload = payload;
+    log("CONFIRM PAYLOAD: " + JSON.stringify(payload));
 
-    window.setTimeout(() => {
-        state.confirmStatus = "success";
-        render();
-        log("CONFIRM demo -> success (no idempotency yet)");
-    }, 700);
+    const options = {
+      minDelayMs: state.api.minDelayMs,
+      maxDelayMs: state.api.maxDelayMs,
+      errorRate: state.api.errorRate,
+    }
+    submitConfirm(payload);
+}
+
+function submitConfirm(payload) {
+  state.confirmStatus = "submitting";
+  render();
+  fakeConfirmBooking(payload, options)
+  .then((result) => {
+    state.confirmStatus = "success";
+    log("API success");
+    state.selectedBookingId = result.bookingId;
+    render();
+  })
+  .catch((error) => {
+    state.confirmStatus = "error";
+    log("API error: " + error.message);
+    render();
+  });
 }
 
 // “Double click test” gomb: direkt kétszer hívja.
-// MOST még nem védünk ellene, szóval látni fogod, hogy kétszer fut le a logika.
 function onDoubleClickTest() {
   log("DOUBLE CLICK TEST fired (2x confirm)");
   onConfirmClick();
@@ -181,9 +210,31 @@ function resetAll() {
   state.step = "service";
   state.selectedServiceId = null;
   state.selectedSlotId = null;
+  state.selectedBookingId = null;
   state.confirmStatus = "idle";
   log("RESET");
   render();
+}
+
+function fakeConfirmBooking(payload, options) {
+  return new Promise((resolve, reject) => {
+    const { minDelayMs, maxDelayMs, errorRate } = options;
+
+    const delay = Math.floor(Math.random() * (maxDelayMs - minDelayMs + 1)) + minDelayMs;
+
+    setTimeout(() => {
+      const shouldFail = Math.random() < errorRate;
+      if (shouldFail) {
+        reject(new Error("Booking failed!"));
+      } else {
+        resolve({
+          bookingId: "BKG-" + Math.floor(Math.random() * 10000),
+          serviceId: payload.serviceId,
+          slotId: payload.slotId,
+        })
+      }
+    }, delay)
+  })
 }
 
 // ---------- WIRE UP ----------
