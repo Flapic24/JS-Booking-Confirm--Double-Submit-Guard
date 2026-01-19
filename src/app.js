@@ -128,8 +128,16 @@ function render() {
     : state.confirmStatus === "success" ? "Sikeres!"
     : "Hiba történt.";
   
-  if (state.confirmStatus === "submitting") el.retryBtn.disabled = true;
-  if (state.confirmStatus === "error") el.retryBtn.disabled = false;
+    // Retry UI state (mindig állítsd be, ne csak néha)
+    const isError = state.confirmStatus === "error";
+    const isSubmitting = state.confirmStatus === "submitting";
+    const hasRetryData = !!state.lastConfirmPayload && !!state.lastConfirmOptions;
+
+    // A retry gomb csak error esetén értelmes, és csak akkor, ha van mit újraküldeni
+    el.retryBtn.disabled = !isError || isSubmitting || !hasRetryData;
+
+    // (opcionális) felirat: ha már nyomtál retry-t és újra küld, legyen egyértelmű
+    el.retryBtn.textContent = isSubmitting ? "Újrapróbálás…" : "Újrapróbálás";
 
   // ezekkel MOST még nem foglalkozunk, csak rejtsük el alapból
   // confirm result / error visibility
@@ -143,7 +151,8 @@ function render() {
     state.confirmStatus !== "error"
   );
 
-  if (state.confirmStatus === "success") el.bookingId.textContent = state.selectedBookingId;
+  el.bookingId.textContent =
+  state.confirmStatus === "success" ? state.selectedBookingId : "–";
 }
 
 // ---------- EVENTS ----------
@@ -220,6 +229,8 @@ function resetAll() {
   state.selectedSlotId = null;
   state.selectedBookingId = null;
   state.confirmStatus = "idle";
+  state.lastConfirmPayload = null;
+  state.lastConfirmOptions = null;
   log("RESET");
   render();
 }
